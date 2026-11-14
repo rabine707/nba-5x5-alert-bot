@@ -46,11 +46,14 @@ def candidates(boxscore):
 def classify(game_id, player_id, name, values):
     if len(values) != 5:
         raise ValueError("A 5x5 requires five stat values")
+    if min(values) < 2:
+        return []
     reached = sum(value >= 5 for value in values)
     stages = []
-    if reached == 3:
-        remaining_at_two = sum(2 <= value < 5 for value in values)
-        stages.append(("3x5", "3x5-1x2", "3x5-2x2")[remaining_at_two])
+    if reached < 3:
+        stages.append("5x2")
+    elif reached == 3:
+        stages.append("3x5-2x2")
     elif reached == 4:
         stages.append("4x5")
         low = [i for i, value in enumerate(values) if value < 5]
@@ -74,11 +77,10 @@ def publish(topic, alert):
         raise ValueError("NTFY_TOPIC must be a single topic name")
     url = "https://ntfy.sh/" + urllib.parse.quote(topic, safe="")
     stats = " · ".join(f"{value} {label}" for value, label in zip(alert["values"], CATEGORIES))
-    titles = {"3x5": "3×5 milestone", "3x5-1x2": "3×5 / 1×2 milestone",
-              "3x5-2x2": "3×5 / 2×2 milestone", "4x5": "4×5 milestone",
+    titles = {"5x2": "5×2 milestone", "3x5-2x2": "3×5 / 2×2 milestone",
+              "4x5": "4×5 milestone",
               "one-away": "5×5 watch: one away", "achieved": "5×5 achieved!"}
-    details = {"3x5": "has 5+ in three stat categories",
-               "3x5-1x2": "has 5+ in three categories and 2+ in one more",
+    details = {"5x2": "has 2+ in all five stat categories",
                "3x5-2x2": "has 5+ in three categories and 2+ in both others",
                "4x5": "has 5+ in four stat categories",
                "one-away": f"needs one more {alert['missing']}",
@@ -150,8 +152,8 @@ class GitHubState:
         request_json(f"{API}/repos/{self.repo}/contents/sent.json", method="PUT", data=payload, headers=self.headers)
 
 
-STAGE_RANK = {"3x5": 1, "3x5-1x2": 2, "3x5-2x2": 3,
-              "4x5": 4, "one-away": 5, "achieved": 6}
+STAGE_RANK = {"3x5": 0, "3x5-1x2": 0, "5x2": 1,
+              "3x5-2x2": 2, "4x5": 3, "one-away": 4, "achieved": 5}
 
 
 def should_send(alert, sent):
