@@ -15,7 +15,8 @@ CATEGORIES = ("PTS", "REB", "AST", "STL", "BLK")
 
 
 def request_json(url, *, method="GET", data=None, headers=None):
-    base_headers = {"User-Agent": "nba-5x5-alert-bot/1.0", "Accept": "application/json"}
+    base_headers = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                    "Accept": "application/json, text/plain, */*", "Referer": "https://www.espn.com/"}
     base_headers.update(headers or {})
     body = json.dumps(data).encode() if data is not None else None
     if body is not None:
