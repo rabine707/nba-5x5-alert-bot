@@ -1,6 +1,6 @@
 import unittest
 
-from bot import active_game_ids, candidates
+from bot import active_game_ids, candidates, should_send
 
 
 def fixture(steals=4, blocks=5, points=5, rebounds=5, assists=5):
@@ -13,7 +13,20 @@ def fixture(steals=4, blocks=5, points=5, rebounds=5, assists=5):
 
 class AlertTests(unittest.TestCase):
     def test_three_by_five(self):
-        self.assertEqual([a["stage"] for a in candidates(fixture(steals=2, blocks=2))], ["3x5"])
+        self.assertEqual([a["stage"] for a in candidates(fixture(steals=1, blocks=1))], ["3x5"])
+
+    def test_three_by_five_one_by_two(self):
+        self.assertEqual([a["stage"] for a in candidates(fixture(steals=2, blocks=1))],
+                         ["3x5-1x2"])
+
+    def test_three_by_five_two_by_two(self):
+        self.assertEqual([a["stage"] for a in candidates(fixture(steals=2, blocks=2))],
+                         ["3x5-2x2"])
+
+    def test_later_milestone_suppresses_earlier_one(self):
+        alert = candidates(fixture(steals=1, blocks=1))[0]
+        self.assertFalse(should_send(alert, {"401909300:123:3x5-2x2": "sent"}))
+        self.assertTrue(should_send(alert, {"401909300:456:3x5-2x2": "sent"}))
 
     def test_four_by_five_and_one_away(self):
         alerts = candidates(fixture())
