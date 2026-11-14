@@ -1,0 +1,38 @@
+name: NBA 5x5 alerts
+
+on:
+  schedule:
+    - cron: '2/5 * * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Check live NBA data without publishing alerts'
+        required: false
+        type: boolean
+        default: true
+
+concurrency:
+  group: nba-5x5-poll
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v
+      - name: Poll NBA and send alerts
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
+        run: python bot.py
+
