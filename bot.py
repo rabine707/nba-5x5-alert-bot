@@ -141,6 +141,11 @@ def run():
     if os.getenv("DRY_RUN") == "1":
         for alert in alerts:
             print(f"DRY RUN: {alert['name']} {alert['stage']} {alert['values']}")
+        if os.getenv("GITHUB_TOKEN") and os.getenv("GITHUB_REPOSITORY"):
+            state = GitHubState(os.environ["GITHUB_REPOSITORY"], os.environ["GITHUB_TOKEN"])
+            state.ensure()
+            sent, _ = state.load()
+            print(f"Stored alert keys: {len(sent)}")
         return
     state = GitHubState(os.environ["GITHUB_REPOSITORY"], os.environ["GITHUB_TOKEN"])
     state.ensure()
