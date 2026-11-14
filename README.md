@@ -1,6 +1,6 @@
 # NBA 5×5 alert bot
 
-Free experimental NBA 5×5 watch for an iPhone subscribed to an [ntfy](https://ntfy.sh/) topic. A GitHub Actions job polls the ESPN NBA live scoreboard every five minutes and checks each active game's box score. It sends alerts when a player has 5 or more in three stat categories (3×5), four categories (4×5), or all five (5×5). A separate one-away alert fires when four categories are at 5 or more and the fifth reaches 4. Each stage is sent at most once per player per game. If a player first appears at a later stage, the bot sends the current milestone rather than replaying earlier ones.
+Free experimental NBA 5×5 watch for an iPhone subscribed to an [ntfy](https://ntfy.sh/) topic. A GitHub Actions job polls the ESPN NBA live scoreboard every five minutes and checks each active game's box score. It sends alerts as a player reaches 3×5 (5+ in three of points, rebounds, assists, steals, blocks), 3×5/1×2 (one remaining stat reaches 2), 3×5/2×2 (both remaining stats reach 2), 4×5, and 5×5. A separate one-away alert fires when four categories are at 5+ and the fifth reaches 4. Each stage is sent at most once per player per game. If a player first appears at a later stage, the bot sends the current milestone rather than replaying earlier ones. A 4×5 and one-away alert may arrive together.
 
 ## Setup from an iPhone
 
