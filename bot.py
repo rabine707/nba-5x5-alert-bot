@@ -49,7 +49,8 @@ def classify(game_id, player_id, name, values):
     reached = sum(value >= 5 for value in values)
     stages = []
     if reached == 3:
-        stages.append("3x5")
+        remaining_at_two = sum(2 <= value < 5 for value in values)
+        stages.append(("3x5", "3x5-1x2", "3x5-2x2")[remaining_at_two])
     elif reached == 4:
         stages.append("4x5")
         low = [i for i, value in enumerate(values) if value < 5]
@@ -73,9 +74,12 @@ def publish(topic, alert):
         raise ValueError("NTFY_TOPIC must be a single topic name")
     url = "https://ntfy.sh/" + urllib.parse.quote(topic, safe="")
     stats = " · ".join(f"{value} {label}" for value, label in zip(alert["values"], CATEGORIES))
-    titles = {"3x5": "3×5 milestone", "4x5": "4×5 milestone",
+    titles = {"3x5": "3×5 milestone", "3x5-1x2": "3×5 / 1×2 milestone",
+              "3x5-2x2": "3×5 / 2×2 milestone", "4x5": "4×5 milestone",
               "one-away": "5×5 watch: one away", "achieved": "5×5 achieved!"}
     details = {"3x5": "has 5+ in three stat categories",
+               "3x5-1x2": "has 5+ in three categories and 2+ in one more",
+               "3x5-2x2": "has 5+ in three categories and 2+ in both others",
                "4x5": "has 5+ in four stat categories",
                "one-away": f"needs one more {alert['missing']}",
                "achieved": "has reached a 5×5"}
@@ -146,6 +150,19 @@ class GitHubState:
         request_json(f"{API}/repos/{self.repo}/contents/sent.json", method="PUT", data=payload, headers=self.headers)
 
 
+STAGE_RANK = {"3x5": 1, "3x5-1x2": 2, "3x5-2x2": 3,
+              "4x5": 4, "one-away": 5, "achieved": 6}
+
+
+def should_send(alert, sent):
+    prefix = alert["key"].rsplit(":", 1)[0] + ":"
+    return alert["key"] not in sent and not any(
+        key.startswith(prefix) and
+        STAGE_RANK.get(key.rsplit(":", 1)[-1], 0) > STAGE_RANK[alert["stage"]]
+        for key in sent
+    )
+
+
 def run():
     if os.getenv("TEST_NOTIFICATION") == "1":
         topic = os.getenv("NTFY_TOPIC")
@@ -179,7 +196,7 @@ def run():
     state.ensure()
     sent, sha = state.load()
     for alert in alerts:
-        if alert["key"] in sent:
+        if not should_send(alert, sent):
             continue
         publish(os.environ["NTFY_TOPIC"], alert)
         sent[alert["key"]] = datetime.now(timezone.utc).isoformat()
