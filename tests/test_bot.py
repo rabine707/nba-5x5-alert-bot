@@ -12,18 +12,24 @@ def fixture(steals=4, blocks=5, points=5, rebounds=5, assists=5):
 
 
 class AlertTests(unittest.TestCase):
-    def test_one_away(self):
-        alert = candidates(fixture())[0]
-        self.assertEqual((alert["key"], alert["missing"]), ("401909300:123:one-away", "STL"))
+    def test_three_by_five(self):
+        self.assertEqual([a["stage"] for a in candidates(fixture(steals=2, blocks=2))], ["3x5"])
+
+    def test_four_by_five_and_one_away(self):
+        alerts = candidates(fixture())
+        self.assertEqual([a["key"] for a in alerts],
+                         ["401909300:123:4x5", "401909300:123:one-away"])
+        self.assertEqual(alerts[1]["missing"], "STL")
+
+    def test_four_by_five_without_one_away(self):
+        self.assertEqual([a["stage"] for a in candidates(fixture(steals=3))], ["4x5"])
 
     def test_achieved_has_distinct_key(self):
-        self.assertEqual(candidates(fixture(steals=5))[0]["key"], "401909300:123:achieved")
+        self.assertEqual([a["key"] for a in candidates(fixture(steals=5))],
+                         ["401909300:123:achieved"])
 
-    def test_two_categories_short_is_not_alert(self):
-        self.assertEqual(candidates(fixture(steals=4, blocks=4)), [])
-
-    def test_more_than_one_short_is_not_alert(self):
-        self.assertEqual(candidates(fixture(steals=3)), [])
+    def test_two_categories_reached_is_not_alert(self):
+        self.assertEqual(candidates(fixture(points=2, steals=2, blocks=2)), [])
 
     def test_only_live_games(self):
         data = {"events": [{"id": "1", "status": {"type": {"state": "pre"}}},
