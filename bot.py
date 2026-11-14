@@ -44,20 +44,23 @@ def candidates(boxscore):
 
 
 def classify(game_id, player_id, name, values):
-    result = []
     if len(values) != 5:
         raise ValueError("A 5x5 requires five stat values")
-    low = [i for i, value in enumerate(values) if value < 5]
-    if not low:
-        stage = "achieved"
-    elif len(low) == 1 and values[low[0]] == 4:
-        stage = "one-away"
-    else:
-        return result
-    key = f"{game_id}:{player_id}:{stage}"
-    result.append({"key": key, "game_id": game_id, "name": name, "stage": stage,
-                   "missing": CATEGORIES[low[0]] if low else None, "values": values})
-    return result
+    reached = sum(value >= 5 for value in values)
+    stages = []
+    if reached == 3:
+        stages.append("3x5")
+    elif reached == 4:
+        stages.append("4x5")
+        low = [i for i, value in enumerate(values) if value < 5]
+        if values[low[0]] == 4:
+            stages.append("one-away")
+    elif reached == 5:
+        stages.append("achieved")
+    return [{"key": f"{game_id}:{player_id}:{stage}", "game_id": game_id,
+             "name": name, "stage": stage,
+             "missing": CATEGORIES[low[0]] if stage == "one-away" else None,
+             "values": values} for stage in stages]
 
 
 def active_game_ids(scoreboard):
@@ -70,8 +73,14 @@ def publish(topic, alert):
         raise ValueError("NTFY_TOPIC must be a single topic name")
     url = "https://ntfy.sh/" + urllib.parse.quote(topic, safe="")
     stats = " · ".join(f"{value} {label}" for value, label in zip(alert["values"], CATEGORIES))
-    title = "5×5 achieved!" if alert["stage"] == "achieved" else "5×5 watch: one away"
-    detail = "has reached a 5×5" if alert["stage"] == "achieved" else f"needs one more {alert['missing']}"
+    titles = {"3x5": "3×5 milestone", "4x5": "4×5 milestone",
+              "one-away": "5×5 watch: one away", "achieved": "5×5 achieved!"}
+    details = {"3x5": "has 5+ in three stat categories",
+               "4x5": "has 5+ in four stat categories",
+               "one-away": f"needs one more {alert['missing']}",
+               "achieved": "has reached a 5×5"}
+    title = titles[alert["stage"]]
+    detail = details[alert["stage"]]
     body = f"{alert['name']} {detail}.\n{stats}"
     req = urllib.request.Request(url, data=body.encode(), method="POST", headers={
         "Title": title, "Priority": "high", "Tags": "basketball", "Content-Type": "text/plain; charset=utf-8",
