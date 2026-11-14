@@ -12,19 +12,20 @@ def fixture(steals=4, blocks=5, points=5, rebounds=5, assists=5):
 
 
 class AlertTests(unittest.TestCase):
-    def test_three_by_five(self):
-        self.assertEqual([a["stage"] for a in candidates(fixture(steals=1, blocks=1))], ["3x5"])
+    def test_five_by_two_starts_alerts(self):
+        self.assertEqual([a["stage"] for a in candidates(fixture(
+            points=4, rebounds=4, assists=4, steals=2, blocks=2))], ["5x2"])
 
-    def test_three_by_five_one_by_two(self):
-        self.assertEqual([a["stage"] for a in candidates(fixture(steals=2, blocks=1))],
-                         ["3x5-1x2"])
+    def test_stat_below_two_sends_nothing(self):
+        self.assertEqual(candidates(fixture(steals=1)), [])
 
-    def test_three_by_five_two_by_two(self):
+    def test_three_by_five_two_by_two_is_next(self):
         self.assertEqual([a["stage"] for a in candidates(fixture(steals=2, blocks=2))],
                          ["3x5-2x2"])
 
     def test_later_milestone_suppresses_earlier_one(self):
-        alert = candidates(fixture(steals=1, blocks=1))[0]
+        alert = candidates(fixture(points=4, rebounds=4, assists=4,
+                                   steals=2, blocks=2))[0]
         self.assertFalse(should_send(alert, {"401909300:123:3x5-2x2": "sent"}))
         self.assertTrue(should_send(alert, {"401909300:456:3x5-2x2": "sent"}))
 
@@ -41,8 +42,9 @@ class AlertTests(unittest.TestCase):
         self.assertEqual([a["key"] for a in candidates(fixture(steals=5))],
                          ["401909300:123:achieved"])
 
-    def test_two_categories_reached_is_not_alert(self):
-        self.assertEqual(candidates(fixture(points=2, steals=2, blocks=2)), [])
+    def test_five_by_two_with_only_two_fives(self):
+        self.assertEqual([a["stage"] for a in candidates(fixture(
+            points=2, steals=2, blocks=2))], ["5x2"])
 
     def test_only_live_games(self):
         data = {"events": [{"id": "1", "status": {"type": {"state": "pre"}}},
