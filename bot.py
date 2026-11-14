@@ -81,6 +81,18 @@ def publish(topic, alert):
             raise RuntimeError(f"ntfy returned HTTP {response.status}")
 
 
+def publish_test(topic):
+    if not topic or "/" in topic or "?" in topic:
+        raise ValueError("NTFY_TOPIC must be a single topic name")
+    req = urllib.request.Request("https://ntfy.sh/" + urllib.parse.quote(topic, safe=""),
+        data=b"Connection test from GitHub Actions. No live NBA milestone.", method="POST",
+        headers={"Title": "NBA 5x5 bot test", "Priority": "default", "Tags": "basketball",
+                 "User-Agent": "nba-5x5-alert-bot/1.0"})
+    with urllib.request.urlopen(req, timeout=20) as response:
+        if response.status >= 300:
+            raise RuntimeError(f"ntfy returned HTTP {response.status}")
+
+
 class GitHubState:
     """Store sent keys in a dedicated branch using GitHub's contents API."""
     def __init__(self, repo, token, branch="alert-state"):
@@ -126,6 +138,13 @@ class GitHubState:
 
 
 def run():
+    if os.getenv("TEST_NOTIFICATION") == "1":
+        topic = os.getenv("NTFY_TOPIC")
+        if not topic:
+            raise RuntimeError("Missing NTFY_TOPIC")
+        publish_test(topic)
+        print("Test notification accepted by ntfy")
+        return
     if os.getenv("DRY_RUN") == "1":
         print("Dry run: no notification or state write")
     else:
