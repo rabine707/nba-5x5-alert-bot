@@ -10,6 +10,11 @@ on:
         required: false
         type: boolean
         default: true
+      test_notification:
+        description: 'Send one clearly labeled connection test to the saved ntfy topic'
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: nba-5x5-poll
@@ -34,5 +39,6 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
+          TEST_NOTIFICATION: ${{ inputs.test_notification && '1' || '0' }}
         run: python bot.py
 
