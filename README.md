@@ -1,6 +1,6 @@
 # NBA 5×5 alert bot
 
-Free experimental NBA 5×5 watch for an iPhone subscribed to an [ntfy](https://ntfy.sh/) topic. A GitHub Actions job polls the NBA live scoreboard every five minutes and checks each active game's box score. It sends one alert when a player has at least five points, rebounds, assists, steals, and blocks except for exactly one category at four, and another if the player completes the 5×5.
+Free experimental NBA 5×5 watch for an iPhone subscribed to an [ntfy](https://ntfy.sh/) topic. A GitHub Actions job polls the ESPN NBA live scoreboard every five minutes and checks each active game's box score. It sends one alert when a player has at least five points, rebounds, assists, steals, and blocks except for exactly one category at four, and another if the player completes the 5×5.
 
 ## Setup from an iPhone
 
@@ -18,9 +18,9 @@ python -m unittest discover -s tests -v
 DRY_RUN=1 python bot.py
 ```
 
-The second command still requires network access to NBA's live feed. Its output is informational; it sends no notification.
+The second command still requires network access to ESPN's live feed. Its output is informational; it sends no notification.
 
 ## Limits
 
-GitHub scheduled workflows can be delayed or dropped under load, and schedules in inactive public repositories can be disabled. This is a hobby alert, not a guaranteed real-time service. NBA's public live JSON feed may change without notice. The bot currently checks games marked in progress, so it does not replay a milestone first discovered after a game has become final. ntfy.sh topics are public to anyone who knows the topic name.
+GitHub scheduled workflows can be delayed or dropped under load, and schedules in inactive public repositories can be disabled. This is a hobby alert, not a guaranteed real-time service. ESPN's public live JSON feed may change without notice. The bot currently checks games marked in progress, so it does not replay a milestone first discovered after a game has become final. ntfy.sh topics are public to anyone who knows the topic name.
 
