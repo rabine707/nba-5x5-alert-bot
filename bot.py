@@ -8,10 +8,10 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 
-SCOREBOARD = "https://cdn.nba.com/static/json/liveData/scoreboard/todaysScoreboard_00.json"
-BOXSCORE = "https://cdn.nba.com/static/json/liveData/boxscore/boxscore_{}.json"
+SCOREBOARD = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard"
+BOXSCORE = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event={}"
 API = "https://api.github.com"
-CATEGORIES = (("points", "PTS"), ("reboundsTotal", "REB"), ("assists", "AST"), ("steals", "STL"), ("blocks", "BLK"))
+CATEGORIES = ("PTS", "REB", "AST", "STL", "BLK")
 
 
 def request_json(url, *, method="GET", data=None, headers=None):
@@ -26,39 +26,49 @@ def request_json(url, *, method="GET", data=None, headers=None):
 
 
 def candidates(boxscore):
-    game = boxscore["game"]
-    game_id = str(game["gameId"])
+    game_id = str(boxscore["header"]["id"])
     result = []
-    for side in ("homeTeam", "awayTeam"):
-        for player in game[side].get("players", []):
-            stats = player.get("statistics") or {}
-            values = [int(stats.get(key) or 0) for key, _ in CATEGORIES]
-            if not player.get("played") and not any(values):
+    for team in boxscore["boxscore"].get("players", []):
+        for group in team.get("statistics", []):
+            labels = group.get("labels", [])
+            if not all(label in labels for label in CATEGORIES):
                 continue
-            low = [i for i, value in enumerate(values) if value < 5]
-            if not low:
-                stage = "achieved"
-            elif len(low) == 1 and values[low[0]] == 4:
-                stage = "one-away"
-            else:
-                continue
-            name = player.get("name") or " ".join(filter(None, [player.get("firstName"), player.get("familyName")]))
-            player_id = str(player["personId"])
-            key = f"{game_id}:{player_id}:{stage}"
-            result.append({"key": key, "game_id": game_id, "name": name, "stage": stage,
-                           "missing": CATEGORIES[low[0]][1] if low else None, "values": values})
+            for player in group.get("athletes", []):
+                if player.get("didNotPlay"):
+                    continue
+                values = [int(player["stats"][labels.index(label)] or 0) for label in CATEGORIES]
+                result.extend(classify(game_id, str(player["athlete"]["id"]),
+                                       player["athlete"]["displayName"], values))
+    return result
+
+
+def classify(game_id, player_id, name, values):
+    result = []
+    if len(values) != 5:
+        raise ValueError("A 5x5 requires five stat values")
+    low = [i for i, value in enumerate(values) if value < 5]
+    if not low:
+        stage = "achieved"
+    elif len(low) == 1 and values[low[0]] == 4:
+        stage = "one-away"
+    else:
+        return result
+    key = f"{game_id}:{player_id}:{stage}"
+    result.append({"key": key, "game_id": game_id, "name": name, "stage": stage,
+                   "missing": CATEGORIES[low[0]] if low else None, "values": values})
     return result
 
 
 def active_game_ids(scoreboard):
-    return [str(g["gameId"]) for g in scoreboard["scoreboard"]["games"] if int(g.get("gameStatus", 0)) == 2]
+    return [str(g["id"]) for g in scoreboard["events"]
+            if g["status"]["type"].get("state") == "in"]
 
 
 def publish(topic, alert):
     if not topic or "/" in topic or "?" in topic:
         raise ValueError("NTFY_TOPIC must be a single topic name")
     url = "https://ntfy.sh/" + urllib.parse.quote(topic, safe="")
-    stats = " · ".join(f"{value} {label}" for value, (_, label) in zip(alert["values"], CATEGORIES))
+    stats = " · ".join(f"{value} {label}" for value, label in zip(alert["values"], CATEGORIES))
     title = "5×5 achieved!" if alert["stage"] == "achieved" else "5×5 watch: one away"
     detail = "has reached a 5×5" if alert["stage"] == "achieved" else f"needs one more {alert['missing']}"
     body = f"{alert['name']} {detail}.\n{stats}"
