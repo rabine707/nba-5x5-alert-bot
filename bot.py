@@ -81,14 +81,17 @@ def players(boxscore, event):
 def classify(game_id, player_id, name, values):
     if len(values) != 5:
         raise ValueError("A 5x5 requires five stat values")
-    if min(values) < 2:
-        return []
     reached = sum(value >= 5 for value in values)
     stages = []
     if reached < 3:
-        stages.append("5x2")
+        if min(values) >= 2:
+            stages.append("5x2")
     elif reached == 3:
-        stages.append("3x5-2x2")
+        low = [i for i, value in enumerate(values) if value < 5]
+        if any(values[i] == 4 for i in low):
+            stages.append("3x5-1x4")
+        elif min(values) >= 2:
+            stages.append("3x5-2x2")
     elif reached == 4:
         stages.append("4x5")
         low = [i for i, value in enumerate(values) if value < 5]
@@ -98,7 +101,7 @@ def classify(game_id, player_id, name, values):
         stages.append("achieved")
     return [{"key": f"{game_id}:{player_id}:{stage}", "game_id": game_id,
              "name": name, "stage": stage,
-             "missing": CATEGORIES[low[0]] if stage == "one-away" else None,
+             "missing": CATEGORIES[next(i for i in low if values[i] == 4)] if stage == "3x5-1x4" else CATEGORIES[low[0]] if stage == "one-away" else None,
              "values": values} for stage in stages]
 
 
@@ -111,11 +114,13 @@ def notification_message(alert):
     """Build readable ntfy copy; HTTP header values must remain ASCII."""
     titles = {"5x2": "5x5 watch: let him cook",
               "3x5-2x2": "5x5 watch: the plot thickens",
+              "3x5-1x4": "5x5 watch: the fourth category is loading",
               "4x5": "5x5 watch: we're so back",
               "one-away": "5x5 watch: EVERYBODY STAY CALM",
               "achieved": "5x5 ACHIEVED: absolute cinema"}
     details = {"5x2": "has 2+ in every category. The 5×5 recipe is on the stove.",
                "3x5-2x2": "has 5+ in three categories and 2+ in the other two. This is no longer a drill.",
+               "3x5-1x4": f"has 5+ in three categories and 4 {alert['missing']}. One more {alert['missing']} makes it four at 5+. The plot thickens.",
                "4x5": "has 5+ in four categories. One category left. Do you believe in miracles?",
                "one-away": f"needs just one more {alert['missing']} for a 5×5. EVERYBODY STAY CALM.",
                "achieved": "just pulled off a 5×5. Hang the box score in the Louvre."}
@@ -197,7 +202,7 @@ class GitHubState:
 
 
 STAGE_RANK = {"3x5": 0, "3x5-1x2": 0, "5x2": 1,
-              "3x5-2x2": 2, "4x5": 3, "one-away": 4, "achieved": 5}
+              "3x5-2x2": 2, "3x5-1x4": 2.5, "4x5": 3, "one-away": 4, "achieved": 5}
 
 
 def should_send(alert, sent):
