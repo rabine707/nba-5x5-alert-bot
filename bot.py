@@ -107,23 +107,31 @@ def active_game_ids(scoreboard):
             if g["status"]["type"].get("state") == "in"]
 
 
+def notification_message(alert):
+    """Build readable ntfy copy; HTTP header values must remain ASCII."""
+    titles = {"5x2": "NBA 5x5 watch: on the board",
+              "3x5-2x2": "NBA 5x5 watch: 3 of 5",
+              "4x5": "NBA 5x5 watch: 4 of 5",
+              "one-away": "NBA 5x5 watch: one away!",
+              "achieved": "NBA 5x5 achieved!"}
+    details = {"5x2": "has at least 2 in every category. The 5×5 chase is on.",
+               "3x5-2x2": "has reached 5 in three categories and has at least 2 in the other two.",
+               "4x5": "has reached 5 in four categories.",
+               "one-away": f"needs just one more {alert['missing']} for a 5×5!",
+               "achieved": "has completed a 5×5!"}
+    stats = " · ".join(f"{label} {value}" for label, value in zip(CATEGORIES, alert["values"]))
+    context = " · ".join(v for v in (alert.get("team"), alert.get("game")) if v)
+    body = f"{alert['name']} {details[alert['stage']]}\n{stats}"
+    if context:
+        body += f"\n{context}"
+    return titles[alert["stage"]], body
+
+
 def publish(topic, alert):
     if not topic or "/" in topic or "?" in topic:
         raise ValueError("NTFY_TOPIC must be a single topic name")
     url = "https://ntfy.sh/" + urllib.parse.quote(topic, safe="")
-    stats = " · ".join(f"{value} {label}" for value, label in zip(alert["values"], CATEGORIES))
-    titles = {"5x2": "5×2 milestone", "3x5-2x2": "3×5 / 2×2 milestone",
-              "4x5": "4×5 milestone",
-              "one-away": "5×5 watch: one away", "achieved": "5×5 achieved!"}
-    details = {"5x2": "has 2+ in all five stat categories",
-               "3x5-2x2": "has 5+ in three categories and 2+ in both others",
-               "4x5": "has 5+ in four stat categories",
-               "one-away": f"needs one more {alert['missing']}",
-               "achieved": "has reached a 5×5"}
-    title = titles[alert["stage"]]
-    detail = details[alert["stage"]]
-    context = " · ".join(v for v in (alert.get("team"), alert.get("game")) if v)
-    body = f"{alert['name']} {detail}.\n{stats}" + (f"\n{context}" if context else "")
+    title, body = notification_message(alert)
     req = urllib.request.Request(url, data=body.encode(), method="POST", headers={
         "Title": title, "Priority": "high", "Tags": "basketball", "Content-Type": "text/plain; charset=utf-8",
         "User-Agent": "nba-5x5-alert-bot/1.0"})
