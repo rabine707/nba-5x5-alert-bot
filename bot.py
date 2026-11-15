@@ -109,16 +109,16 @@ def active_game_ids(scoreboard):
 
 def notification_message(alert):
     """Build readable ntfy copy; HTTP header values must remain ASCII."""
-    titles = {"5x2": "NBA 5x5 watch: on the board",
-              "3x5-2x2": "NBA 5x5 watch: 3 of 5",
-              "4x5": "NBA 5x5 watch: 4 of 5",
-              "one-away": "NBA 5x5 watch: one away!",
-              "achieved": "NBA 5x5 achieved!"}
-    details = {"5x2": "has at least 2 in every category. The 5×5 chase is on.",
-               "3x5-2x2": "has reached 5 in three categories and has at least 2 in the other two.",
-               "4x5": "has reached 5 in four categories.",
-               "one-away": f"needs just one more {alert['missing']} for a 5×5!",
-               "achieved": "has completed a 5×5!"}
+    titles = {"5x2": "5x5 watch: let him cook",
+              "3x5-2x2": "5x5 watch: the plot thickens",
+              "4x5": "5x5 watch: we're so back",
+              "one-away": "5x5 watch: EVERYBODY STAY CALM",
+              "achieved": "5x5 ACHIEVED: absolute cinema"}
+    details = {"5x2": "has 2+ in every category. The 5×5 recipe is on the stove.",
+               "3x5-2x2": "has 5+ in three categories and 2+ in the other two. This is no longer a drill.",
+               "4x5": "has 5+ in four categories. One category left. Do you believe in miracles?",
+               "one-away": f"needs just one more {alert['missing']} for a 5×5. EVERYBODY STAY CALM.",
+               "achieved": "just pulled off a 5×5. Hang the box score in the Louvre."}
     stats = " · ".join(f"{label} {value}" for label, value in zip(CATEGORIES, alert["values"]))
     context = " · ".join(v for v in (alert.get("team"), alert.get("game")) if v)
     body = f"{alert['name']} {details[alert['stage']]}\n{stats}"

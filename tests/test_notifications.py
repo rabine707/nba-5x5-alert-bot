@@ -33,8 +33,8 @@ class NotificationTests(unittest.TestCase):
         with patch('urllib.request.urlopen', return_value=Response()) as send:
             publish('example-topic', alert)
         request = send.call_args.args[0]
-        self.assertEqual(request.get_header('Title'), 'NBA 5x5 achieved!')
-        self.assertIn('José Test has completed a 5×5!', request.data.decode('utf-8'))
+        self.assertEqual(request.get_header('Title'), '5x5 ACHIEVED: absolute cinema')
+        self.assertIn('José Test just pulled off a 5×5.', request.data.decode('utf-8'))
         self.assertEqual(request.full_url, 'https://ntfy.sh/example-topic')
 
 
