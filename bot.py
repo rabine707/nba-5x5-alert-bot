@@ -1,6 +1,8 @@
 """Poll NBA live data and publish one-away/achieved 5x5 alerts."""
 import json
+import logging
 import os
+from pathlib import Path
 import sys
 import time
 import urllib.error
@@ -12,6 +14,7 @@ SCOREBOARD = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/score
 BOXSCORE = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event={}"
 API = "https://api.github.com"
 CATEGORIES = ("PTS", "REB", "AST", "STL", "BLK")
+LOG = logging.getLogger("nba5x5")
 
 
 def request_json(url, *, method="GET", data=None, headers=None):
@@ -41,6 +44,38 @@ def candidates(boxscore):
                 result.extend(classify(game_id, str(player["athlete"]["id"]),
                                        player["athlete"]["displayName"], values))
     return result
+
+
+def players(boxscore, event):
+    """Normalize a live box score for the dashboard, independently of alert eligibility."""
+    teams = {str(t.get("team", {}).get("id")): t.get("team", {}).get("displayName", "")
+             for t in event.get("competitions", [{}])[0].get("competitors", [])}
+    rows = []
+    for team in boxscore.get("boxscore", {}).get("players", []):
+        team_name = teams.get(str(team.get("team", {}).get("id")),
+                              team.get("team", {}).get("displayName", ""))
+        for group in team.get("statistics", []):
+            labels = group.get("labels", [])
+            if not all(label in labels for label in CATEGORIES):
+                continue
+            for player in group.get("athletes", []):
+                if player.get("didNotPlay"):
+                    continue
+                try:
+                    stats = [int(player["stats"][labels.index(label)] or 0) for label in CATEGORIES]
+                    athlete = player["athlete"]
+                except (KeyError, IndexError, TypeError, ValueError):
+                    LOG.warning("Skipping malformed player in game %s", event.get("id"))
+                    continue
+                rows.append({"id": str(athlete["id"]), "name": athlete["displayName"],
+                             "team": team_name, "game_id": str(event["id"]),
+                             "game": " vs ".join(c.get("team", {}).get("abbreviation", "")
+                                                  for c in event.get("competitions", [{}])[0].get("competitors", [])),
+                             "status": event.get("status", {}).get("type", {}).get("shortDetail", "Live"),
+                             "values": stats, "reached": sum(v >= 5 for v in stats),
+                             "distance": sum(max(0, 5 - v) for v in stats),
+                             "minimum": min(stats)})
+    return rows
 
 
 def classify(game_id, player_id, name, values):
@@ -87,7 +122,8 @@ def publish(topic, alert):
                "achieved": "has reached a 5×5"}
     title = titles[alert["stage"]]
     detail = details[alert["stage"]]
-    body = f"{alert['name']} {detail}.\n{stats}"
+    context = " · ".join(v for v in (alert.get("team"), alert.get("game")) if v)
+    body = f"{alert['name']} {detail}.\n{stats}" + (f"\n{context}" if context else "")
     req = urllib.request.Request(url, data=body.encode(), method="POST", headers={
         "Title": title, "Priority": "high", "Tags": "basketball", "Content-Type": "text/plain; charset=utf-8",
         "User-Agent": "nba-5x5-alert-bot/1.0"})
@@ -165,6 +201,54 @@ def should_send(alert, sent):
     )
 
 
+class LocalState:
+    """Atomic local history writes; the existing JSON key/timestamp format stays intact."""
+    def __init__(self, path):
+        self.path = Path(path)
+
+    def ensure(self):
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+
+    def load(self):
+        if not self.path.exists():
+            return {}, None
+        data = json.loads(self.path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError("sent.json must contain an object")
+        return data, None
+
+    def save(self, sent, sha=None):
+        import tempfile
+        import os
+        fd, name = tempfile.mkstemp(prefix=".sent-", suffix=".tmp", dir=self.path.parent)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as file:
+                json.dump(sent, file, indent=2, sort_keys=True)
+                file.write("\n")
+                file.flush()
+                os.fsync(file.fileno())
+            os.replace(name, self.path)
+        finally:
+            if os.path.exists(name):
+                os.unlink(name)
+
+
+def write_dashboard(path, snapshot):
+    import tempfile
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fd, name = tempfile.mkstemp(prefix=".dashboard-", suffix=".tmp", dir=target.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as file:
+            json.dump(snapshot, file, ensure_ascii=False, indent=2)
+            file.flush()
+            os.fsync(file.fileno())
+        os.replace(name, target)
+    finally:
+        if os.path.exists(name):
+            os.unlink(name)
+
+
 def run():
     if os.getenv("TEST_NOTIFICATION") == "1":
         topic = os.getenv("NTFY_TOPIC")
@@ -173,35 +257,55 @@ def run():
         publish_test(topic)
         print("Test notification accepted by ntfy")
         return
-    if os.getenv("DRY_RUN") == "1":
-        print("Dry run: no notification or state write")
+    dry_run = os.getenv("DRY_RUN") == "1"
+    local = os.getenv("STATE_MODE", "github").lower() == "local"
+    if dry_run:
+        LOG.info("Dry run: no notification or state write")
     else:
-        for name in ("NTFY_TOPIC", "GITHUB_TOKEN", "GITHUB_REPOSITORY"):
+        for name in (("NTFY_TOPIC",) if local else ("NTFY_TOPIC", "GITHUB_TOKEN", "GITHUB_REPOSITORY")):
             if not os.getenv(name):
                 raise RuntimeError(f"Missing {name}")
-    ids = active_game_ids(request_json(SCOREBOARD))
-    print(f"Active games: {len(ids)}")
+    scoreboard = request_json(SCOREBOARD)
+    events = [e for e in scoreboard["events"] if e["status"]["type"].get("state") == "in"]
+    LOG.info("Active games: %s", len(events))
     alerts = []
-    for game_id in ids:
-        alerts.extend(candidates(request_json(BOXSCORE.format(game_id))))
-    print(f"Eligible alerts: {len(alerts)}")
-    if os.getenv("DRY_RUN") == "1":
+    rows = []
+    errors = []
+    for event in events:
+        game_id = str(event["id"])
+        try:
+            box = request_json(BOXSCORE.format(game_id))
+            game_rows = players(box, event)
+            rows.extend(game_rows)
+            context = {row["id"]: row for row in game_rows}
+            for alert in candidates(box):
+                row = context.get(alert["key"].split(":")[1], {})
+                alert.update({"team": row.get("team", ""), "game": row.get("game", "")})
+                alerts.append(alert)
+        except (urllib.error.URLError, KeyError, ValueError, TypeError) as exc:
+            LOG.exception("Game %s failed", game_id)
+            errors.append(game_id)
+    LOG.info("Eligible alerts: %s", len(alerts))
+    if dry_run:
         for alert in alerts:
-            print(f"DRY RUN: {alert['name']} {alert['stage']} {alert['values']}")
+            LOG.info("DRY RUN: %s %s %s", alert['name'], alert['stage'], alert['values'])
         if os.getenv("GITHUB_TOKEN") and os.getenv("GITHUB_REPOSITORY"):
             state = GitHubState(os.environ["GITHUB_REPOSITORY"], os.environ["GITHUB_TOKEN"])
             state.ensure()
             sent, _ = state.load()
-            print(f"Stored alert keys: {len(sent)}")
+            LOG.info("Stored alert keys: %s", len(sent))
         return
-    state = GitHubState(os.environ["GITHUB_REPOSITORY"], os.environ["GITHUB_TOKEN"])
+    root = Path(__file__).resolve().parent
+    state = LocalState(os.getenv("SENT_PATH", str(root / "sent.json"))) if local else GitHubState(os.environ["GITHUB_REPOSITORY"], os.environ["GITHUB_TOKEN"])
     state.ensure()
     sent, sha = state.load()
+    recent = []
     for alert in alerts:
         if not should_send(alert, sent):
             continue
         publish(os.environ["NTFY_TOPIC"], alert)
-        sent[alert["key"]] = datetime.now(timezone.utc).isoformat()
+        timestamp = datetime.now(timezone.utc).isoformat()
+        sent[alert["key"]] = timestamp
         # Persist after each successful publish so a later failure cannot replay earlier alerts.
         for attempt in range(3):
             try:
@@ -209,15 +313,46 @@ def run():
                 sent, sha = state.load()
                 break
             except urllib.error.HTTPError as e:
-                if e.code != 409 or attempt == 2:
+                if local or e.code != 409 or attempt == 2:
                     raise
                 sent, sha = state.load()
                 sent[alert["key"]] = datetime.now(timezone.utc).isoformat()
                 time.sleep(attempt + 1)
-        print(f"Published {alert['stage']} for {alert['name']}")
+        recent.append({"name": alert["name"], "stage": alert["stage"], "team": alert.get("team", ""), "at": timestamp})
+        LOG.info("Published %s for %s", alert['stage'], alert['name'])
+    if local:
+        snapshot_path = Path(os.getenv("DASHBOARD_DATA", str(root / "dashboard.json")))
+        previous = {}
+        if snapshot_path.exists():
+            try:
+                previous = json.loads(snapshot_path.read_text(encoding="utf-8"))
+            except (ValueError, OSError):
+                LOG.warning("Previous dashboard snapshot unreadable")
+        history = (recent + previous.get("recent_alerts", []))[:20]
+        known = {f"{a['name']}:{a['stage']}:{a['at']}" for a in history}
+        names = {(r['game_id'], r['id']): r for r in rows}
+        for key, timestamp in sorted(sent.items(), key=lambda item: str(item[1]), reverse=True):
+            parts = key.split(":")
+            if len(parts) != 3 or not isinstance(timestamp, str):
+                continue
+            row = names.get((parts[0], parts[1]), {})
+            name = row.get('name', f'Player {parts[1]}')
+            if f"{name}:{parts[2]}:{timestamp}" not in known:
+                history.append({"name": name, "stage": parts[2], "team": row.get('team', ''), "at": timestamp})
+                known.add(f"{name}:{parts[2]}:{timestamp}")
+        history = sorted(history, key=lambda a: a.get('at', ''), reverse=True)[:20]
+        snapshot = {"updated_at": datetime.now(timezone.utc).isoformat(),
+                    "last_successful_check": datetime.now(timezone.utc).isoformat() if not errors else previous.get("last_successful_check"),
+                    "status": "degraded" if errors else "ok", "failed_games": errors,
+                    "active_games": len(events), "players": sorted(rows, key=lambda r: (r["reached"], -r["distance"], r["minimum"]), reverse=True),
+                    "recent_alerts": history}
+        write_dashboard(snapshot_path, snapshot)
+    if errors:
+        raise RuntimeError(f"Failed to check {len(errors)} active game(s): {', '.join(errors)}")
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(name)s %(message)s')
     try:
         run()
     except Exception as e:
