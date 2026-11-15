@@ -16,8 +16,28 @@ class AlertTests(unittest.TestCase):
         self.assertEqual([a["stage"] for a in candidates(fixture(
             points=4, rebounds=4, assists=4, steals=2, blocks=2))], ["5x2"])
 
-    def test_stat_below_two_sends_nothing(self):
-        self.assertEqual(candidates(fixture(steals=1)), [])
+    def test_stat_below_two_sends_nothing_without_three_fives(self):
+        self.assertEqual(candidates(fixture(points=4, rebounds=4, assists=4, steals=1)), [])
+
+    def test_three_fives_and_four_alerts_even_with_one_in_fifth(self):
+        alerts = candidates(fixture(points=23, rebounds=9, assists=5, steals=1, blocks=4))
+        self.assertEqual([a["stage"] for a in alerts], ["3x5-1x4"])
+        self.assertEqual(alerts[0]["missing"], "BLK")
+        self.assertFalse(should_send(alerts[0], {alerts[0]["key"]: "sent"}))
+        self.assertFalse(should_send(alerts[0], {"401909300:123:4x5": "sent"}))
+
+    def test_three_fives_four_and_two_advances_existing_stage(self):
+        alert = candidates(fixture(steals=2, blocks=4))[0]
+        self.assertEqual(alert["stage"], "3x5-1x4")
+        self.assertTrue(should_send(alert, {"401909300:123:3x5-2x2": "sent"}))
+        older = candidates(fixture(steals=2, blocks=2))[0]
+        self.assertFalse(should_send(older, {alert["key"]: "sent"}))
+
+    def test_four_fives_alerts_even_with_one_in_fifth(self):
+        self.assertEqual([a["stage"] for a in candidates(fixture(steals=1))], ["4x5"])
+
+    def test_three_fives_without_four_and_one_in_fifth_sends_nothing(self):
+        self.assertEqual(candidates(fixture(steals=1, blocks=3)), [])
 
     def test_three_by_five_two_by_two_is_next(self):
         self.assertEqual([a["stage"] for a in candidates(fixture(steals=2, blocks=2))],
