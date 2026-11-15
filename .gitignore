@@ -3,3 +3,8 @@ __pycache__/
 .env
 sent.json
 
+dashboard.json
+.sent-*.tmp
+.dashboard-*.tmp
+*.log
+logs/
