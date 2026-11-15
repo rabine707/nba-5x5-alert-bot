@@ -14,7 +14,7 @@ class Response:
 
 class NotificationTests(unittest.TestCase):
     def test_every_stage_uses_ascii_title_and_includes_stats(self):
-        for stage in ('5x2', '3x5-2x2', '4x5', 'one-away', 'achieved'):
+        for stage in ('5x2', '3x5-2x2', '3x5-1x4', '4x5', 'one-away', 'achieved'):
             with self.subTest(stage=stage):
                 title, body = notification_message({
                     'name': 'Test Player', 'stage': stage, 'missing': 'STL',
@@ -23,6 +23,9 @@ class NotificationTests(unittest.TestCase):
                 self.assertIn('Test Player', body)
                 self.assertIn('PTS 5 · REB 6 · AST 7 · STL 4 · BLK 8', body)
                 self.assertIn('Home · H vs A', body)
+        self.assertIn('One more STL makes it four', notification_message({
+            'name': 'Test Player', 'stage': '3x5-1x4', 'missing': 'STL',
+            'values': [5, 6, 7, 4, 1]})[1])
         self.assertIn('one more STL', notification_message({
             'name': 'Test Player', 'stage': 'one-away', 'missing': 'STL',
             'values': [5, 6, 7, 4, 8]})[1])
